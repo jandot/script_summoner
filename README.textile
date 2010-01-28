@@ -1,0 +1,47 @@
+h3. What does summon do?
+
+*summon* generates a template ruby script based on a configuration file.
+It gets rid of the tedious copying/pasting/figuring-out of option parsing.
+
+h3. How do I use it?
+
+<pre>summon example.conf</pre>
+
+h3. Status
+
+Embryonic... Will change it as and when I need to. Feel free to fork :-)
+
+h3. Config file format
+
+Configuration file is in YAML format. Example:
+<pre>---
+name: script_name
+author: Jan Aerts
+description: This is the description of your script
+options:
+  - short: i
+    long: infile
+    example: my_file.txt
+    default: input.txt
+    type: String
+    mandatory: false
+    description: Input file
+  - short: o
+    long: outfile
+    example: my_outfile.txt
+    default: output.txt
+    type: String
+    mandatory: false
+    description: Output file</pre>
+
+Required keys for each option:
+* long
+* example
+* type
+* description
+
+Optional key for each option:
+* short
+* default
+* mandatory (default = no)
+* type (default = String)

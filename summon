@@ -1,0 +1,155 @@
+#!/usr/bin/env ruby
+require 'yaml'
+
+unless ARGV.length == 1
+  STDERR.puts "[ERROR] Please provide configuration filename (e.g. 'summon example.config')"
+  exit
+end
+
+config_file = ARGV[0]
+
+CONFIG = YAML::load(File.read(config_file))
+
+# Check validity of file:
+config_ok = true
+# - mandatory fields
+unless CONFIG.has_key?('author')
+  puts "Missing author in config file"
+  config_ok = false
+end
+unless CONFIG.has_key?('name')
+  puts "Missing script name in config file"
+  config_ok = false
+end
+unless CONFIG.has_key?('description')
+  puts "Missing script description in config file"
+  config_ok = false
+end
+CONFIG['options'].each do |opt|
+  unless opt.has_key?('long')
+    puts "Missing long name for option in config file"
+    config_ok = false
+  end
+  if opt.has_key?('type') and ! opt['type'] == 'Boolean'
+    unless opt.has_key?('example')
+      puts "Missing example for option in config file"
+      config_ok = false
+    end
+  end
+end
+# - Options cannot be required and have a default at the same time (otherwise they wouldn't be required...)
+CONFIG['options'].each do |opt|
+  if opt.has_key?('required') and opt['required'] and opt.has_key?('default')
+    puts "Options cannot have a default value and be required at the same time"
+    config_ok = false
+  end
+end
+exit unless config_ok
+
+outfile = File.new(CONFIG['name'], 'w')
+outfile.puts '#!/usr/bin/env ruby'
+
+# Get script name, author, usage and description
+output_part = <<OUT
+# == NAME
+#   #{CONFIG['name']}
+# 
+# == AUTHOR
+#   #{CONFIG['author']}
+# 
+# == USAGE  
+#   #{CONFIG['name']}
+OUT
+outfile.puts output_part
+
+CONFIG['options'].each do |opt|
+  outfile.puts "#      [ -#{opt['short']} | --#{opt['long']} ] #{opt['example']}\n"
+end
+
+output_part = <<OUT
+#
+# == DESCRIPTION  
+#   #{CONFIG['description']}
+# 
+# == OPTIONS
+OUT
+outfile.puts output_part
+
+CONFIG['options'].each do |opt|
+  outfile.print "#   -#{opt['short']}, --#{opt['long']}:\n#            #{opt['description']}"
+  if opt['default']
+    outfile.print ' Default: ' + opt['default'] + '.'
+  end
+  if opt['required']
+    outfile.print ' Required.'
+  end
+  outfile.puts "\n"
+end
+
+outfile.puts "\n"
+outfile.puts "require 'rubygems'\n"
+outfile.puts "require 'optparse'\n"
+outfile.puts "require 'rdoc/usage'\n"
+outfile.puts "require 'yaml'\n"
+outfile.puts
+
+# Set options defaults
+outfile.puts '# Set option defaults'
+outfile.puts 'options = {'
+default_array = Array.new
+CONFIG['options'].each do |opt|
+  if opt.has_key?('default')
+    if opt.has_key?('type') and opt['type'] == 'Boolean'
+      default_array.push('  :' + opt['long'] + ' => ' + opt['default'].to_s)
+    else
+      default_array.push('  :' + opt['long'] + ' => "' + opt['default'].to_s + '"')
+    end
+  end
+end
+outfile.puts default_array.join(",\n")
+outfile.puts '}'
+outfile.puts
+
+outfile.puts '# Set options'
+outfile.puts 'optparse = OptionParser.new do |opts|'
+outfile.puts "  opts.on('-h','--help',"
+outfile.puts "          'Display the usage information') {RDoc::usage}"
+
+CONFIG['options'].each do |opt|
+  unless opt.has_key?('type')
+    opt['type'] = 'String'
+  end
+  
+  if opt['type'] == 'Boolean'
+    outfile.puts "  opts.on('-#{opt['short']}','--#{opt['long']}',"
+    outfile.puts "          '#{opt['description']}') {|argument| options[:#{opt['long']}] = true}"
+  else
+    if opt.has_key?('required') and opt['required']
+      outfile.puts "  opts.on('-#{opt['short']}','--#{opt['long']} #{opt['long'].gsub(/ /, '_')}',"
+    else
+      outfile.puts "  opts.on('-#{opt['short']}','--#{opt['long']} [#{opt['long'].gsub(/ /, '_')}]',"
+    end
+    outfile.puts "          #{opt['type']},"
+    outfile.puts "          '#{opt['description']}') {|argument| options[:#{opt['long']}] = argument}"
+  end
+
+end
+outfile.puts 'end'
+outfile.puts "optparse.parse! rescue RDoc::usage('usage')"
+
+outfile.puts
+outfile.puts '# Check that mandatory arguments are present'
+CONFIG['options'].each do |opt|
+  if opt.has_key?('required') and opt['required']
+    outfile.puts "if options[:#{opt['long']}].nil?"
+    outfile.puts "  STDERR.puts '[ERROR] Missing argument: #{opt['long']}'"
+    outfile.puts "  RDoc::usage"
+    outfile.puts "  exit"
+    outfile.puts "end"
+  end
+end
+outfile.puts "puts options.to_yaml"
+
+outfile.close
+
+system('chmod u+x ' + CONFIG['name'])
